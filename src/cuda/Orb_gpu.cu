@@ -54,24 +54,34 @@ using namespace cv::cuda::device;
 
 namespace ORB_SLAM2 { namespace cuda {
 
-  __constant__ unsigned char c_pattern[sizeof(Point) * 512];
+  // __constant__ unsigned char c_pattern[sizeof(Point) * 512];
+  Point* d_pattern = nullptr;
 
-  void GpuOrb::loadPattern(const Point * _pattern) {
-    checkCudaErrors( cudaMemcpyToSymbol(c_pattern, _pattern, sizeof(Point) * 512) );
+  // void GpuOrb::loadPattern(const Point * _pattern) {
+  //   checkCudaErrors( cudaMemcpyToSymbol(c_pattern, _pattern, sizeof(Point) * 512) );
+  // }
+
+  void GpuOrb::loadPattern(const Point* _pattern) {
+  if (!d_pattern)
+    checkCudaErrors(cudaMalloc(&d_pattern, sizeof(Point) * 512));
+
+  checkCudaErrors(cudaMemcpy(d_pattern, _pattern, sizeof(Point) * 512, cudaMemcpyHostToDevice));
   }
 
 #define GET_VALUE(idx) \
     image(loc.y + __float2int_rn(pattern[idx].x * b + pattern[idx].y * a), \
           loc.x + __float2int_rn(pattern[idx].x * a - pattern[idx].y * b))
 
-  __global__ void calcOrb_kernel(const PtrStepb image, KeyPoint * keypoints, const int npoints, PtrStepb descriptors) {
+  // __global__ void calcOrb_kernel(const PtrStepb image, KeyPoint * keypoints, const int npoints, PtrStepb descriptors) {
+  __global__ void calcOrb_kernel(const PtrStepb image, KeyPoint* keypoints, const int npoints, PtrStepb descriptors, const Point* d_pattern){
     int id = blockIdx.x;
     int tid = threadIdx.x;
     if (id >= npoints) return;
 
     const KeyPoint &kpt = keypoints[id];
     short2 loc = make_short2(kpt.pt.x, kpt.pt.y);
-    const Point * pattern = ((Point *)c_pattern) + 16 * tid;
+    // const Point * pattern = ((Point *)c_pattern) + 16 * tid;
+    const Point* pattern = d_pattern + 16 * tid;
 
     uchar * desc = descriptors.ptr(id);
     const float factorPI = (float)(CV_PI/180.f);
@@ -126,7 +136,9 @@ namespace ORB_SLAM2 { namespace cuda {
 
     dim3 dimBlock(32);
     dim3 dimGrid(npoints);
-    calcOrb_kernel<<<dimGrid, dimBlock, 0, stream>>>(image, keypoints, npoints, desc);
+    // calcOrb_kernel<<<dimGrid, dimBlock, 0, stream>>>(image, keypoints, npoints, desc);
+    calcOrb_kernel<<<dimGrid, dimBlock, 0, stream>>>(image, keypoints, npoints, desc, d_pattern);
+
     checkCudaErrors( cudaGetLastError() );
   }
 
@@ -135,3 +147,4 @@ namespace ORB_SLAM2 { namespace cuda {
     checkCudaErrors( cudaStreamSynchronize(stream) );
   }
 } }
+

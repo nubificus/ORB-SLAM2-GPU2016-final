@@ -63,10 +63,23 @@ class LinearSolverEigen: public LinearSolver<MatrixType>
         CholeskyDecomposition() : Eigen::SimplicialLDLT<SparseMatrix, Eigen::Upper>() {}
         using Eigen::SimplicialLDLT< SparseMatrix, Eigen::Upper>::analyzePattern_preordered;
 
+        // void analyzePatternWithPermutation(SparseMatrix& a, const PermutationMatrix& permutation)
+        // {
+        //   m_Pinv = permutation;
+        //   m_P = permutation.inverse();
+        //   int size = a.cols();
+        //   SparseMatrix ap(size, size);
+        //   ap.selfadjointView<Eigen::Upper>() = a.selfadjointView<UpLo>().twistedBy(m_P);
+        //   analyzePattern_preordered(ap, true);
+        // }
         void analyzePatternWithPermutation(SparseMatrix& a, const PermutationMatrix& permutation)
         {
-          m_Pinv = permutation;
-          m_P = permutation.inverse();
+          using PermutationMatrixInt = Eigen::PermutationMatrix<-1, -1, int>;
+          PermutationMatrixInt permutation_int(permutation.indices().cast<int>());
+
+          m_Pinv = permutation_int;
+          m_P = permutation_int.inverse();
+
           int size = a.cols();
           SparseMatrix ap(size, size);
           ap.selfadjointView<Eigen::Upper>() = a.selfadjointView<UpLo>().twistedBy(m_P);
@@ -235,3 +248,4 @@ class LinearSolverEigen: public LinearSolver<MatrixType>
 } // end namespace
 
 #endif
+

@@ -46,6 +46,9 @@
 #include "opencv2/core/cuda/functional.hpp"
 #include <helper_cuda.h>
 #include <cuda/Fast.hpp>
+#include <cstdio>
+#include <cassert>
+
 
 using namespace cv;
 using namespace cv::cuda;
@@ -393,14 +396,35 @@ namespace ORB_SLAM2 { namespace cuda {
     joinDetectAsync(keypoints);
   }
 
-  __constant__ int c_u_max[32];
+  // __constant__ int c_u_max[32];
+  // __constant__ int c_u_max[64];
+  __device__ int c_u_max[64];
+  int* d_u_max = nullptr;
 
   void IC_Angle::loadUMax(const int* u_max, int count)
   {
-    checkCudaErrors( cudaMemcpyToSymbol(c_u_max, u_max, count * sizeof(int)) );
+      printf("[DEBUG] loadUMax: count = %d, u_max = %p\n", count, (void*)u_max);
+      assert(count > 0 && count <= 64);
+
+      if (!d_u_max)
+          checkCudaErrors(cudaMalloc(&d_u_max, count * sizeof(int)));
+
+      checkCudaErrors(cudaMemcpy(d_u_max, u_max, count * sizeof(int), cudaMemcpyHostToDevice));
   }
 
-  __global__ void IC_Angle_kernel(const PtrStepb image, KeyPoint * keypoints, const int npoints, const int half_k)
+
+  // void IC_Angle::loadUMax(const int* u_max, int count)
+  // {
+  //   printf("[DEBUG] loadUMax: count = %d, u_max = %p\n", count, (void*)u_max);
+  //   // assert(count > 0 && count <= 64);
+  //   // // checkCudaErrors( cudaMemcpyToSymbol(c_u_max, u_max, count * sizeof(int)) );
+  //   // checkCudaErrors( cudaMemcpy(c_u_max, u_max, count * sizeof(int), cudaMemcpyHostToDevice) );
+  //   void* c_u_max_ptr = nullptr;
+  //   checkCudaErrors(cudaGetSymbolAddress(&c_u_max_ptr, c_u_max));
+  //   checkCudaErrors(cudaMemcpy(c_u_max_ptr, u_max, count * sizeof(int), cudaMemcpyHostToDevice));
+  // }
+
+  __global__ void IC_Angle_kernel(const PtrStepb image, KeyPoint * keypoints, const int npoints, const int half_k, const int* d_u_max)
   {
     __shared__ int smem0[8 * 32];
     __shared__ int smem1[8 * 32];
@@ -429,7 +453,7 @@ namespace ORB_SLAM2 { namespace cuda {
         // Proceed over the two lines
         int v_sum = 0;
         int m_sum = 0;
-        const int d = c_u_max[v];
+        const int d = d_u_max[v];
 
         for (int u = threadIdx.x - d; u <= d; u += blockDim.x)
         {
@@ -498,7 +522,9 @@ namespace ORB_SLAM2 { namespace cuda {
     {
       dim3 block(32, 8);
       dim3 grid(divUp(npoints, block.y));
-      IC_Angle_kernel<<<grid, block, 0, stream>>>(image, keypoints, npoints, half_k);
+      // IC_Angle_kernel<<<grid, block, 0, stream>>>(image, keypoints, npoints, half_k);
+      IC_Angle_kernel<<<grid, block, 0, stream>>>(image, keypoints, npoints, half_k, d_u_max);
+
       checkCudaErrors( cudaGetLastError() );
     }
   }
@@ -509,3 +535,4 @@ namespace ORB_SLAM2 { namespace cuda {
   }
 
 } } // namespace fast
+

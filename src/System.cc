@@ -25,6 +25,7 @@
 #include <thread>
 #include <pangolin/pangolin.h>
 #include <iomanip>
+#include <unistd.h>
 
 namespace ORB_SLAM2
 {
@@ -429,3 +430,4 @@ void System::SaveTrajectoryKITTI(const string &filename)
 }
 
 } //namespace ORB_SLAM
+
