@@ -23,6 +23,61 @@
 #include "ORBmatcher.h"
 #include <thread>
 
+
+void ExportKeypoints(const std::string& filename, const std::vector<cv::KeyPoint>& keypoints)
+{
+    std::ofstream file(filename);
+    if (!file.is_open())
+    {
+        std::cerr << "Error: Cannot open file to save keypoints: " << filename << std::endl;
+        return;
+    }
+
+    for (const auto& kp : keypoints)
+    {
+        file << kp.pt.x << "," << kp.pt.y << "," << kp.size << "," << kp.angle << "," << kp.response << "," << kp.octave << "," << kp.class_id << "\n";
+    }
+
+    file.close();
+    std::cout << "[INFO VACCEL KEYPOINTS] Exported " << keypoints.size() << " keypoints to " << filename << std::endl;
+}
+
+void ExportMat(const std::string& filename, const cv::Mat& mat)
+{
+    std::ofstream file(filename);
+    if (!file.is_open())
+    {
+        std::cerr << "Error: Cannot open file to save matrix: " << filename << std::endl;
+        return;
+    }
+
+    for (int i = 0; i < mat.rows; ++i)
+    {
+        for (int j = 0; j < mat.cols; ++j)
+        {
+            if (mat.channels() == 1)
+            {
+                file << mat.at<float>(i, j);  // You can adjust type based on your Mat
+            }
+            else
+            {
+                for (int c = 0; c < mat.channels(); ++c)
+                {
+                    file << mat.at<cv::Vec3f>(i, j)[c]; // Change Vec3f if needed
+                    if (c < mat.channels() - 1)
+                        file << ",";
+                }
+            }
+            if (j < mat.cols - 1)
+                file << ",";
+        }
+        file << "\n";
+    }
+
+    file.close();
+    std::cout << "[INFO VACCEL MAT] Exported matrix (" << mat.rows << "x" << mat.cols << ") to " << filename << std::endl;
+}
+
 namespace ORB_SLAM2
 {
 
@@ -76,11 +131,19 @@ Frame::Frame(const cv::Mat &imLeft, const cv::Mat &imRight, const double &timeSt
     mvLevelSigma2 = mpORBextractorLeft->GetScaleSigmaSquares();
     mvInvLevelSigma2 = mpORBextractorLeft->GetInverseScaleSigmaSquares();
 
+    auto t_orb_start = std::chrono::high_resolution_clock::now();
+
     // ORB extraction
     thread threadLeft(&Frame::ExtractORB,this,0,imLeft);
     thread threadRight(&Frame::ExtractORB,this,1,imRight);
     threadLeft.join();
     threadRight.join();
+
+    auto t_orb_end = std::chrono::high_resolution_clock::now();
+    double orb_time_ms = std::chrono::duration_cast<std::chrono::duration<double>>(t_orb_end - t_orb_start).count() * 1000.0;
+
+    std::cout << "[TIMING] Stereo ORB Extraction in Frame(): " << orb_time_ms << " ms" << std::endl;
+
 
     if(mvKeys.empty())
         return;
@@ -253,10 +316,42 @@ void Frame::AssignFeaturesToGrid()
 
 void Frame::ExtractORB(int flag, const cv::Mat &im)
 {
-    if(flag==0)
-        (*mpORBextractorLeft)(im,cv::Mat(),mvKeys,mDescriptors);
-    else
-        (*mpORBextractorRight)(im,cv::Mat(),mvKeysRight,mDescriptorsRight);
+    if(flag==0){
+        #ifndef VACCEL
+            auto t_orb_start = std::chrono::high_resolution_clock::now();
+
+            (*mpORBextractorLeft)(im,cv::Mat(),mvKeys,mDescriptors);
+            // mpORBextractorLeft->operator()(im, cv::Mat(), mvKeys, mDescriptors);
+
+            auto t_orb_end = std::chrono::high_resolution_clock::now();
+            double orb_time_ms = std::chrono::duration_cast<std::chrono::duration<double>>(t_orb_end - t_orb_start).count() * 1000.0;
+            std::cout << "Stereo orb Extraction in Frame(): " << orb_time_ms << " ms" << std::endl;
+
+        #else
+            mpORBextractorLeft->vaccel_orb_operator(im, cv::Mat(), mvKeys, mDescriptors);
+
+            auto t_Pyr_start = std::chrono::high_resolution_clock::now();
+
+            mpORBextractorLeft->BuildImagePyramid(im);
+
+            auto t_Pyr_end = std::chrono::high_resolution_clock::now();
+            double Pyr_time_ms = std::chrono::duration_cast<std::chrono::duration<double>>(t_Pyr_end - t_Pyr_start).count() * 1000.0;
+
+            std::cout << "Stereo PYR Extraction in Frame(): " << Pyr_time_ms << " ms" << std::endl;
+        #endif
+
+        ExportKeypoints("keypoints_vec_left.txt", mvKeys);
+        ExportMat("keypoints_mat_left.txt", mDescriptors);
+    }
+    else{
+        #ifndef VACCEL
+            (*mpORBextractorRight)(im,cv::Mat(),mvKeysRight,mDescriptorsRight);
+            // mpORBextractorRight->operator()(im, cv::Mat(), mvKeysRight, mDescriptorsRight);
+        #else
+            mpORBextractorRight->vaccel_orb_operator(im, cv::Mat(), mvKeysRight, mDescriptorsRight);
+            mpORBextractorRight->BuildImagePyramid(im);
+        #endif
+    }
 }
 
 void Frame::SetPose(cv::Mat Tcw)
@@ -474,6 +569,11 @@ void Frame::ComputeStereoMatches()
 {
     mvuRight = vector<float>(N,-1.0f);
     mvDepth = vector<float>(N,-1.0f);
+
+    if (mpORBextractorLeft->mvImagePyramid.empty() || mpORBextractorLeft->mvImagePyramid[0].rows == 0) {
+    std::cerr << "[ERROR] mvImagePyramid[0] is empty!" << std::endl;
+    return;
+    }
 
     const int nRows = mpORBextractorLeft->mvImagePyramid[0].rows;
 
