@@ -63,6 +63,17 @@ public:
       std::vector<cv::KeyPoint>& keypoints,
       cv::OutputArray descriptors);
 
+    #ifdef VACCEL
+
+    int vaccel_orb_operator(const cv::Mat& image, const cv::Mat& mask,
+                std::vector<cv::KeyPoint>& keypoints, cv::Mat& descriptors);
+
+    void BuildImagePyramid(const cv::Mat& image) {
+    ComputePyramid(image);
+    }
+
+    #endif
+
     int inline GetLevels(){
         return nlevels;
     }
