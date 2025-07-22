@@ -53,6 +53,7 @@ int main(int argc, char **argv)
 
     // Create SLAM system. It initializes all system threads and gets ready to process frames.
     ORB_SLAM2::System SLAM(argv[1],argv[2],ORB_SLAM2::System::STEREO,false);
+    ORB_SLAM2::gSLAM = &SLAM;
 
     // Vector for tracking time statistics
     vector<float> vTimesTrack;
@@ -85,7 +86,11 @@ int main(int argc, char **argv)
 #endif
 
         // Pass the images to the SLAM system
-        SLAM.TrackStereo(imLeft,imRight,tframe);        
+        #ifndef VACCEL
+        SLAM.TrackStereo(imLeft,imRight,tframe);
+        #else
+        SLAM.vaccel_track_stereo(imLeft, imRight, tframe);
+        #endif
 
 #ifdef COMPILEDWITHC11
         std::chrono::steady_clock::time_point t2 = std::chrono::steady_clock::now();
