@@ -26,10 +26,18 @@
 #include <pangolin/pangolin.h>
 #include <iomanip>
 #include <unistd.h>
+#include <iostream>
+
+
+#include <vaccel.h>
+#include "wrap/utils.hpp"
+
+namespace ORB_SLAM2 {
+    System* gSLAM = nullptr;  // ← This defines the global gSLAM
+}
 
 namespace ORB_SLAM2
 {
-
 System::System(const string &strVocFile, const string &strSettingsFile, const eSensor sensor,
                const bool bUseViewer)
   : mSensor(sensor), mbReset(false), mbActivateLocalizationMode(false)
@@ -101,6 +109,9 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
 	mptViewer = new thread(&Viewer::Run, mpViewer);
 	mpTracker->SetViewer(mpViewer);
     }
+    else {
+        mpViewer = nullptr;
+    }
 
     //Set pointers between threads
     mpTracker->SetLocalMapper(mpLocalMapper);
@@ -112,6 +123,51 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
     mpLoopCloser->SetTracker(mpTracker);
     mpLoopCloser->SetLocalMapper(mpLocalMapper);
 }
+
+#ifdef VACCEL
+cv::Mat System::vaccel_track_stereo(const cv::Mat &imLeft, const cv::Mat &imRight, const double &timestamp)
+{
+    int ret = 0;
+    struct vaccel_arg args[4];
+    struct vaccel_session sess;
+
+    ret = vaccel_session_init(&sess, 0);
+    if (ret != VACCEL_OK) {
+        fprintf(stderr, "Could not initialize session: %d\n", ret);
+    }
+
+    char *library = "./liborb.so";
+    char *operation = "my_wrapped_track_stereo";
+
+    memset(args, 0, sizeof(args));
+
+    size_t imLeft_size = get_mat_size(imLeft);
+    args[0].size = imLeft_size;
+    args[0].buf = serialize_mat_new(imLeft, args[0].buf, imLeft_size);
+
+    size_t imRight_size = get_mat_size(imRight);
+    args[1].size = get_mat_size(imRight);
+    args[1].buf = serialize_mat_new(imRight, args[1].buf, imRight_size);
+
+    args[2].size = sizeof(double);
+    args[2].buf = (uint8_t*)&timestamp;
+
+    ret = vaccel_exec(&sess, library, operation , args, 3, &args[3], 1);
+    if (ret) {
+        fprintf(stderr, "Could not execute TrackStereo wrapper: %d\n", ret);
+        vaccel_session_release(&sess);
+    }
+
+    cv::Mat pose;
+    deserialize_mat(args[3].buf, args[3].size, pose);
+
+    std::cout << "[VACCEL HOST] Pose matrix from wrapper:\n" << pose << "\n";
+
+    vaccel_session_release(&sess);
+    return pose;
+}
+
+#endif
 
 cv::Mat System::TrackStereo(const cv::Mat &imLeft, const cv::Mat &imRight, const double &timestamp)
 {
@@ -157,6 +213,7 @@ cv::Mat System::TrackStereo(const cv::Mat &imLeft, const cv::Mat &imRight, const
 
     return mpTracker->GrabImageStereo(imLeft,imRight,timestamp);
 }
+
 
 cv::Mat System::TrackRGBD(const cv::Mat &im, const cv::Mat &depthmap, const double &timestamp)
 {
