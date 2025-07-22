@@ -317,40 +317,17 @@ void Frame::AssignFeaturesToGrid()
 void Frame::ExtractORB(int flag, const cv::Mat &im)
 {
     if(flag==0){
-        #ifndef VACCEL
-            auto t_orb_start = std::chrono::high_resolution_clock::now();
+        // auto t_orb_start = std::chrono::high_resolution_clock::now();
 
-            (*mpORBextractorLeft)(im,cv::Mat(),mvKeys,mDescriptors);
-            // mpORBextractorLeft->operator()(im, cv::Mat(), mvKeys, mDescriptors);
+        (*mpORBextractorLeft)(im,cv::Mat(),mvKeys,mDescriptors);
+        // mpORBextractorLeft->operator()(im, cv::Mat(), mvKeys, mDescriptors);
 
-            auto t_orb_end = std::chrono::high_resolution_clock::now();
-            double orb_time_ms = std::chrono::duration_cast<std::chrono::duration<double>>(t_orb_end - t_orb_start).count() * 1000.0;
-            std::cout << "Stereo orb Extraction in Frame(): " << orb_time_ms << " ms" << std::endl;
-
-        #else
-            mpORBextractorLeft->vaccel_orb_operator(im, cv::Mat(), mvKeys, mDescriptors);
-
-            auto t_Pyr_start = std::chrono::high_resolution_clock::now();
-
-            mpORBextractorLeft->BuildImagePyramid(im);
-
-            auto t_Pyr_end = std::chrono::high_resolution_clock::now();
-            double Pyr_time_ms = std::chrono::duration_cast<std::chrono::duration<double>>(t_Pyr_end - t_Pyr_start).count() * 1000.0;
-
-            std::cout << "Stereo PYR Extraction in Frame(): " << Pyr_time_ms << " ms" << std::endl;
-        #endif
-
-        ExportKeypoints("keypoints_vec_left.txt", mvKeys);
-        ExportMat("keypoints_mat_left.txt", mDescriptors);
+        // auto t_orb_end = std::chrono::high_resolution_clock::now();
+        // double orb_time_ms = std::chrono::duration_cast<std::chrono::duration<double>>(t_orb_end - t_orb_start).count() * 1000.0;
+        // std::cout << "Stereo orb Extraction in Frame(): " << orb_time_ms << " ms" << std::endl;
     }
     else{
-        #ifndef VACCEL
-            (*mpORBextractorRight)(im,cv::Mat(),mvKeysRight,mDescriptorsRight);
-            // mpORBextractorRight->operator()(im, cv::Mat(), mvKeysRight, mDescriptorsRight);
-        #else
-            mpORBextractorRight->vaccel_orb_operator(im, cv::Mat(), mvKeysRight, mDescriptorsRight);
-            mpORBextractorRight->BuildImagePyramid(im);
-        #endif
+        (*mpORBextractorRight)(im,cv::Mat(),mvKeysRight,mDescriptorsRight);
     }
 }
 

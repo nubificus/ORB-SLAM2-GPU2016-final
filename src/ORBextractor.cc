@@ -68,9 +68,6 @@
 #include <cuda/Orb.hpp>
 #include <Utils.hpp>
 
-#include <vaccel.h>
-#include "wrap/utils.hpp"
-
 using namespace cv;
 using namespace std;
 
@@ -820,50 +817,6 @@ void ORBextractor::operator()( InputArray _image, InputArray _mask, vector<KeyPo
     }
     POP_RANGE;
 }
-
-#ifdef VACCEL
-int ORBextractor::vaccel_orb_operator(const cv::Mat& image, const cv::Mat& mask, std::vector<cv::KeyPoint>& keypoints, cv::Mat& descriptors)
-// int vaccel_orb_operator(Mat image, Mat mask, const std::vector<KeyPoint>& keypoints, Mat& descriptors)
- {
-    int ret = 0;
-    struct vaccel_arg args[4];
-    struct vaccel_session sess;
-
-    ret = vaccel_session_init(&sess, 0);
-    if (ret != VACCEL_OK) {
-        fprintf(stderr, "Could not initialize session: %d\n");
-        return 1;
-    }
-
-    char *library = "./liborb.so";
-	char *operation = "my_wrapped_orb_operator";
-
-    memset(args, 0, sizeof(args));
-
-    size_t image_size = get_mat_size(image);
-    args[0].size = image_size;
-    args[0].buf = serialize_mat_new(image, args[0].buf, image_size);
-
-    size_t mask_size = get_mat_size(mask);
-    args[1].size = mask_size;
-    args[1].buf = serialize_mat_new(mask, args[1].buf, mask_size);
-
-    ret = vaccel_exec(&sess, library, operation , &args[0], 2, &args[2], 2);
-    if (ret) {
-        fprintf(stderr, "Could not execute function: %d\n", ret);
-        vaccel_sess_free(&sess);
-        return ret;
-    }
-
-    deserialize_vec_of_keypoints(args[2].buf,args[2].size,keypoints);
-	deserialize_mat(args[3].buf, args[3].size, descriptors);
-
-
-    vaccel_session_release(&sess);
-
-    return ret;
-}
-#endif
 
 void ORBextractor::ComputePyramid(Mat image) {
   if (mvImagePyramidAllocatedFlag == false) {
