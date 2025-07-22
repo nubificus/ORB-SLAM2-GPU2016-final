@@ -66,6 +66,10 @@ public:
     // Returns the camera pose (empty if tracking fails).
     cv::Mat TrackStereo(const cv::Mat &imLeft, const cv::Mat &imRight, const double &timestamp);
 
+    #ifdef VACCEL
+    cv::Mat vaccel_track_stereo(const cv::Mat &imLeft, const cv::Mat &imRight, const double &timestamp);
+    #endif
+
     // Process the given rgbd frame. Depthmap must be registered to the RGB frame.
     // Input image: RGB (CV_8UC3) or grayscale (CV_8U). RGB is converted to grayscale.
     // Input depthmap: Float (CV_32F).
@@ -157,6 +161,9 @@ private:
     bool mbActivateLocalizationMode;
     bool mbDeactivateLocalizationMode;
 };
+
+    extern System* gSLAM;
+
 
 }// namespace ORB_SLAM
 
