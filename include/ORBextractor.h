@@ -63,8 +63,6 @@ public:
       std::vector<cv::KeyPoint>& keypoints,
       cv::OutputArray descriptors);
 
-    #endif
-
     int inline GetLevels(){
         return nlevels;
     }
