@@ -1,49 +1,39 @@
     #include "wrapper.hpp"
+    #include "../include/System.h"
 
 
     extern "C" {
 
-    void my_wrapped_orb_operator(struct vaccel_arg *read, size_t nr_read,
-            struct vaccel_arg *write, size_t nr_write)
+    void my_wrapped_track_stereo(struct vaccel_arg *read, size_t nr_read,
+                                struct vaccel_arg *write, size_t nr_write)
     {
+        cv::Mat imLeft, imRight;
+        double timestamp;
 
-        cv::Mat image;
-        deserialize_mat(read[0].buf,read[0].size,image);
+        deserialize_mat(read[0].buf, read[0].size, imLeft);
+        deserialize_mat(read[1].buf, read[1].size, imRight);
+        memcpy(&timestamp, read[2].buf, sizeof(double));
 
-        cv::Mat mask;
-        deserialize_mat(read[1].buf,read[1].size,mask);
+        static ORB_SLAM2::System* mpSLAM = nullptr;
+        static std::mutex slam_mutex;
+        std::lock_guard<std::mutex> lock(slam_mutex);
 
-        std::vector<KeyPoint> keypoints;
-        // deserialize_vec_of_keypoints(read[2].buf,read[2].size,keypoints);
+        if (!ORB_SLAM2::gSLAM) {
+            fprintf(stderr, "[WRAPPER] gSLAM is null!\n");
+            return;
+        }
 
-        cv::Mat descriptors;
-        // deserialize_mat(read[3].buf,read[3].size,descriptors);
+        cv::Mat pose = ORB_SLAM2::gSLAM->TrackStereo(imLeft, imRight, timestamp);
 
-        int nFeatures=2000;
+        if (pose.empty()) {
+            fprintf(stderr, "[VACCEL WRAPPER] Pose is empty (tracking might have failed)\n");
+            return;
+        }
 
-        float fScaleFactor= 1.2;
-
-        int nLevels =8;
-
-        int fIniThFAST=20;
-
-        int fMinThFAST=7;
-
-        ORB_SLAM2::ORBextractor* mpORBextractor = new ORB_SLAM2::ORBextractor(nFeatures,fScaleFactor,nLevels,fIniThFAST,fMinThFAST);
-
-        // mpORBextractorLeft->operator()(im, cv::Mat(), mvKeys, mDescriptors);
-        (*mpORBextractor)(image,mask,keypoints,descriptors);
-
-        size_t keypoints_size;
-        write[0].buf = serialize_vec_of_keypoints_new(keypoints, write[0].buf, keypoints_size);
-        write[0].size = keypoints_size;
-
-        size_t descriptors_size;
-        write[1].buf = serialize_mat_new(descriptors, write[1].buf, descriptors_size);
-        write[1].size = descriptors_size;
-
+        size_t pose_size;
+        write[0].buf = serialize_mat_new(pose, write[0].buf, pose_size);
+        write[0].size = pose_size;
 
     }
-
 
     }
