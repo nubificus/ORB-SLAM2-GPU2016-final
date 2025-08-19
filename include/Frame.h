@@ -187,6 +187,8 @@ public:
 
     static bool mbInitialComputations;
 
+    std::vector<cv::Mat> mvImagePyramid;  // CPU-side pyramid, required for ComputeStereoMatches()
+
 
 private:
 
