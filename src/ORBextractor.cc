@@ -822,11 +822,12 @@ void ORBextractor::operator()( InputArray _image, InputArray _mask, vector<KeyPo
 }
 
 #ifdef VACCEL
-int ORBextractor::vaccel_orb_operator(const cv::Mat& image, const cv::Mat& mask, std::vector<cv::KeyPoint>& keypoints, cv::Mat& descriptors)
+int ORBextractor::vaccel_orb_operator(const cv::Mat& image, const cv::Mat& mask, std::vector<cv::KeyPoint>& keypoints, cv::Mat& descriptors,
+    std::vector<cv::cuda::GpuMat>& pyr)
 // int vaccel_orb_operator(Mat image, Mat mask, const std::vector<KeyPoint>& keypoints, Mat& descriptors)
  {
     int ret = 0;
-    struct vaccel_arg args[4];
+    struct vaccel_arg args[5];
     struct vaccel_session sess;
 
     ret = vaccel_session_init(&sess, 0);
@@ -848,7 +849,7 @@ int ORBextractor::vaccel_orb_operator(const cv::Mat& image, const cv::Mat& mask,
     args[1].size = mask_size;
     args[1].buf = serialize_mat_new(mask, args[1].buf, mask_size);
 
-    ret = vaccel_exec(&sess, library, operation , &args[0], 2, &args[2], 2);
+    ret = vaccel_exec(&sess, library, operation , &args[0], 2, &args[2], 3);
     if (ret) {
         fprintf(stderr, "Could not execute function: %d\n", ret);
         vaccel_sess_free(&sess);
@@ -857,7 +858,11 @@ int ORBextractor::vaccel_orb_operator(const cv::Mat& image, const cv::Mat& mask,
 
     deserialize_vec_of_keypoints(args[2].buf,args[2].size,keypoints);
 	deserialize_mat(args[3].buf, args[3].size, descriptors);
+    deserialize_vec_of_gpumat(args[4].buf, args[4].size, pyr);
 
+    // std::cout << "[VACCEL HOST] Received pyr with " << pyr.size() << " levels\n";
+    // for (size_t i = 0; i < pyr.size(); ++i)
+    // std::cout << " → Level " << i << ": " << pyr[i].rows << "x" << pyr[i].cols << "\n";
 
     vaccel_session_release(&sess);
 
