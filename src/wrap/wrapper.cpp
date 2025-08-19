@@ -34,6 +34,17 @@
         // mpORBextractorLeft->operator()(im, cv::Mat(), mvKeys, mDescriptors);
         (*mpORBextractor)(image,mask,keypoints,descriptors);
 
+        vector<cv::cuda::GpuMat> pyr = mpORBextractor->mvImagePyramid;
+
+        std::cout << "[WRAPPER PYR] contains " << pyr.size() << " levels\n";
+            for (size_t i = 0; i < pyr.size(); ++i) {
+                std::cout << "Level " << i << ": "
+                        << pyr[i].rows << "x" << pyr[i].cols
+                        << " type=" << pyr[i].type()
+                        << " channels=" << pyr[i].channels()
+                        << std::endl;
+            }
+
         size_t keypoints_size;
         write[0].buf = serialize_vec_of_keypoints_new(keypoints, write[0].buf, keypoints_size);
         write[0].size = keypoints_size;
@@ -42,6 +53,9 @@
         write[1].buf = serialize_mat_new(descriptors, write[1].buf, descriptors_size);
         write[1].size = descriptors_size;
 
+        size_t pyr_size;
+        write[2].buf = serialize_vec_of_gpumat_new(pyr, write[2].buf, pyr_size);
+        write[2].size = pyr_size;
 
     }
 
