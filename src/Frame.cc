@@ -86,6 +86,10 @@ bool Frame::mbInitialComputations=true;
 float Frame::cx, Frame::cy, Frame::fx, Frame::fy, Frame::invfx, Frame::invfy;
 float Frame::mnMinX, Frame::mnMinY, Frame::mnMaxX, Frame::mnMaxY;
 float Frame::mfGridElementWidthInv, Frame::mfGridElementHeightInv;
+// std::vector<cv::Mat> pyr;
+std::vector<cv::cuda::GpuMat> pyr;
+
+
 
 Frame::Frame()
 {}
@@ -142,7 +146,7 @@ Frame::Frame(const cv::Mat &imLeft, const cv::Mat &imRight, const double &timeSt
     auto t_orb_end = std::chrono::high_resolution_clock::now();
     double orb_time_ms = std::chrono::duration_cast<std::chrono::duration<double>>(t_orb_end - t_orb_start).count() * 1000.0;
 
-    std::cout << "[TIMING] Stereo ORB Extraction in Frame(): " << orb_time_ms << " ms" << std::endl;
+    // std::cout << "[TIMING] Stereo ORB Extraction in Frame(): " << orb_time_ms << " ms" << std::endl;
 
 
     if(mvKeys.empty())
@@ -152,7 +156,13 @@ Frame::Frame(const cv::Mat &imLeft, const cv::Mat &imRight, const double &timeSt
 
     UndistortKeyPoints();
 
+    auto t_compute_start = std::chrono::high_resolution_clock::now();
+
+
     ComputeStereoMatches();
+    auto t_compute_end = std::chrono::high_resolution_clock::now();
+    double compute_time_ms = std::chrono::duration_cast<std::chrono::duration<double>>(t_compute_end - t_compute_start).count() * 1000.0;
+    std::cout << "Stereo compute Extraction in Frame(): " << compute_time_ms << " ms" << std::endl;
 
     mvpMapPoints = vector<MapPoint*>(N,static_cast<MapPoint*>(NULL));    
     mvbOutlier = vector<bool>(N,false);
@@ -328,28 +338,47 @@ void Frame::ExtractORB(int flag, const cv::Mat &im)
             std::cout << "Stereo orb Extraction in Frame(): " << orb_time_ms << " ms" << std::endl;
 
         #else
-            mpORBextractorLeft->vaccel_orb_operator(im, cv::Mat(), mvKeys, mDescriptors);
+            auto t_orb_start = std::chrono::high_resolution_clock::now();
 
-            auto t_Pyr_start = std::chrono::high_resolution_clock::now();
+            mpORBextractorLeft->vaccel_orb_operator(im, cv::Mat(), mvKeys, mDescriptors, pyr);
+            mpORBextractorLeft->mvImagePyramid = pyr;
 
-            mpORBextractorLeft->BuildImagePyramid(im);
+            auto t_orb_end = std::chrono::high_resolution_clock::now();
+            double orb_time_ms = std::chrono::duration_cast<std::chrono::duration<double>>(t_orb_end - t_orb_start).count() * 1000.0;
+            std::cout << "Stereo orb Extraction in Frame(): " << orb_time_ms << " ms" << std::endl;
 
-            auto t_Pyr_end = std::chrono::high_resolution_clock::now();
-            double Pyr_time_ms = std::chrono::duration_cast<std::chrono::duration<double>>(t_Pyr_end - t_Pyr_start).count() * 1000.0;
 
-            std::cout << "Stereo PYR Extraction in Frame(): " << Pyr_time_ms << " ms" << std::endl;
+            // auto t_Pyr_start = std::chrono::high_resolution_clock::now();
+
+            // // mpORBextractorLeft->BuildImagePyramid(im);
+
+            // auto t_Pyr_end = std::chrono::high_resolution_clock::now();
+            // double Pyr_time_ms = std::chrono::duration_cast<std::chrono::duration<double>>(t_Pyr_end - t_Pyr_start).count() * 1000.0;
+
+            // std::cout << "Stereo PYR Extraction in Frame(): " << Pyr_time_ms << " ms" << std::endl;
         #endif
 
-        ExportKeypoints("keypoints_vec_left.txt", mvKeys);
-        ExportMat("keypoints_mat_left.txt", mDescriptors);
+        // ExportKeypoints("keypoints_vec_left.txt", mvKeys);
+        // ExportMat("keypoints_mat_left.txt", mDescriptors);
     }
     else{
         #ifndef VACCEL
             (*mpORBextractorRight)(im,cv::Mat(),mvKeysRight,mDescriptorsRight);
             // mpORBextractorRight->operator()(im, cv::Mat(), mvKeysRight, mDescriptorsRight);
         #else
-            mpORBextractorRight->vaccel_orb_operator(im, cv::Mat(), mvKeysRight, mDescriptorsRight);
-            mpORBextractorRight->BuildImagePyramid(im);
+            mpORBextractorRight->vaccel_orb_operator(im, cv::Mat(), mvKeysRight, mDescriptorsRight, pyr);
+            mpORBextractorRight->mvImagePyramid = pyr;
+
+
+            // std::cout << "PYR contains " << pyr.size() << " levels\n";
+            // for (size_t i = 0; i < pyr.size(); ++i) {
+            //     std::cout << "Level " << i << ": "
+            //             << pyr[i].rows << "x" << pyr[i].cols
+            //             << " type=" << pyr[i].type()
+            //             << " channels=" << pyr[i].channels()
+            //             << std::endl;
+            // }
+
         #endif
     }
 }
@@ -570,12 +599,17 @@ void Frame::ComputeStereoMatches()
     mvuRight = vector<float>(N,-1.0f);
     mvDepth = vector<float>(N,-1.0f);
 
+    // std::cout << "mvImagePyramid is : "<< mpORBextractorLeft->mvImagePyramid.size() << std::endl;
+    // std::cout << "mvImagePyramid[0] is : "<< mpORBextractorLeft->mvImagePyramid[0].size() << std::endl;
+
     if (mpORBextractorLeft->mvImagePyramid.empty() || mpORBextractorLeft->mvImagePyramid[0].rows == 0) {
     std::cerr << "[ERROR] mvImagePyramid[0] is empty!" << std::endl;
     return;
     }
 
     const int nRows = mpORBextractorLeft->mvImagePyramid[0].rows;
+    // std::cout << "nRows is : "<< nRows << std::endl;
+
 
     //Assign keypoints to row table
     vector<vector<size_t> > vRowIndices(nRows,vector<size_t>());
@@ -601,6 +635,7 @@ void Frame::ComputeStereoMatches()
     const float minZ = mb;
     const float minD = -3;
     const float maxD = mbf/minZ;
+
 
     // For each left keypoint search a match in the right image
     vector<pair<int, int> > vDistIdx;
@@ -640,6 +675,7 @@ void Frame::ComputeStereoMatches()
 
             const float &uR = kpR.pt.x;
 
+
             if(uR>=minU && uR<=maxU)
             {
                 const cv::Mat &dR = mDescriptorsRight.row(iR);
@@ -663,11 +699,21 @@ void Frame::ComputeStereoMatches()
             const float scaledvL = round(kpL.pt.y*scaleFactor);
             const float scaleduR0 = round(uR0*scaleFactor);
 
+
             // sliding window search
             const int w = 5;
-            cv::cuda::GpuMat gMat = mpORBextractorLeft->mvImagePyramid[kpL.octave].rowRange(scaledvL - w, scaledvL + w + 1).colRange(scaleduL - w, scaleduL + w + 1);
-            cv::Mat IL(gMat.rows, gMat.cols, gMat.type(), gMat.data, gMat.step);
-            IL.convertTo(IL,CV_32F);
+
+            cv::cuda::GpuMat gGpu = mpORBextractorLeft->mvImagePyramid[kpL.octave]
+                            .rowRange(scaledvL - w, scaledvL + w + 1)
+                            .colRange(scaleduL - w, scaleduL + w + 1);
+            cv::Mat IL;
+            gGpu.download(IL);
+            IL.convertTo(IL, CV_32F);
+
+            // cv::cuda::GpuMat gMat = mpORBextractorLeft->mvImagePyramid[kpL.octave].rowRange(scaledvL - w, scaledvL + w + 1).colRange(scaleduL - w, scaleduL + w + 1);
+            // cv::Mat IL(gMat.rows, gMat.cols, gMat.type(), gMat.data, gMat.step);
+            // IL.convertTo(IL,CV_32F);
+
             IL = IL - IL.at<float>(w,w) *cv::Mat::ones(IL.rows,IL.cols,CV_32F);
 
             int bestDist = INT_MAX;
@@ -676,19 +722,28 @@ void Frame::ComputeStereoMatches()
             vector<float> vDists;
             vDists.resize(2*L+1);
 
+
             const float iniu = scaleduR0+L-w;
             const float endu = scaleduR0+L+w+1;
+
             if(iniu<0 || endu >= mpORBextractorRight->mvImagePyramid[kpL.octave].cols)
                 continue;
 
             for(int incR=-L; incR<=+L; incR++)
             {
                 cv::cuda::GpuMat gMat = mpORBextractorRight->mvImagePyramid[kpL.octave].rowRange(scaledvL - w, scaledvL + w + 1).colRange(scaleduR0 + incR - w, scaleduR0 + incR + w + 1);
+
                 cv::Mat IR(gMat.rows, gMat.cols, gMat.type(), gMat.data, gMat.step);
+                // cv::Mat IR;
+                // gMat.download(IR);        // Move from GPU to CPU
+                // IR.convertTo(IR, CV_32F); // Now safe to use
+
                 IR.convertTo(IR,CV_32F);
+
                 IR = IR - IR.at<float>(w,w) *cv::Mat::ones(IR.rows,IR.cols,CV_32F);
 
                 float dist = cv::norm(IL,IR,cv::NORM_L1);
+
                 if(dist<bestDist)
                 {
                     bestDist =  dist;
@@ -729,6 +784,7 @@ void Frame::ComputeStereoMatches()
             }
         }
     }
+
 
     sort(vDistIdx.begin(),vDistIdx.end());
     const float median = vDistIdx[vDistIdx.size()/2].first;
